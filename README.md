@@ -51,9 +51,12 @@ B-Mark is a universal Android bookmarking utility built with Flutter. It solves 
 3. Tap the **Share** button.
 4. Select **B-Mark** from the list of available apps.
 5. Open B-Mark to see your automatically categorized and saved link!
-6. Implemented local database storage SQLite for offline persistence.
-7. Fetch and display URL metadata (thumbnails and titles) for a better visual experience.
-8. Add link deletion and manual editing capabilities.
+6. Tap on the saved link to open the related app with the post.
+
+## * Features
+1. Implemented local database storage SQLite for offline persistence.
+2. Fetch and display URL metadata (thumbnails and titles) for a better visual experience.
+3. Add link deletion and manual editing capabilities.
 
 ## 🚧 Upcoming Features (Roadmap)
 
