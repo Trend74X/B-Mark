@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:in_app_update/in_app_update.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/app_database.dart';
 import '../models/bookmark.dart';
 import '../models/bookmark_category.dart';
+import '../services/biometric_auth_service.dart';
 import '../services/share_intent_service.dart';
 import '../services/url_metadata_service.dart';
 import '../widgets/add_bookmark_dialog.dart';
@@ -22,7 +24,8 @@ class BookmarkScreen extends StatefulWidget {
   State<BookmarkScreen> createState() => _BookmarkScreenState();
 }
 
-class _BookmarkScreenState extends State<BookmarkScreen> {
+class _BookmarkScreenState extends State<BookmarkScreen>
+    with WidgetsBindingObserver {
   final _database = AppDatabase.instance;
   List<Bookmark> _bookmarks = [];
   List<BookmarkCategory> _categories = [];
@@ -31,22 +34,70 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
   int? _selectedCategoryId;
   String _searchQuery = '';
 
+  /// Whether the user has authenticated to view the Vault this session.
+  ///
+  /// While false, Vault bookmarks are hidden everywhere and the Vault chip
+  /// requires authentication before it can be opened.
+  bool _vaultUnlocked = false;
+
   bool _loading = true;
+  bool _isUpdating = false;
   bool _handlingShare = false;
   StreamSubscription<IncomingShare>? _shareSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _shareSubscription = ShareIntentService.instance.stream.listen(_onShare);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ShareIntentService.instance.start();
       _load();
+      _forceUpdateIfNeeded();
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-lock as soon as the app leaves the foreground so Vault contents are
+    // not left exposed to the app switcher or on resuming later.
+    if (state != AppLifecycleState.resumed) {
+      _lockVault();
+    }
+  }
+
+  Future<void> _forceUpdateIfNeeded() async {
+    setState(() => _isUpdating = true);
+    try {
+      for (var attempt = 0; attempt < 3; attempt++) {
+        final AppUpdateInfo info;
+        try {
+          info = await InAppUpdate.checkForUpdate();
+        } on Exception {
+          return;
+        }
+
+        final updateDue = info.updateAvailability == UpdateAvailability.updateAvailable ||
+            info.updateAvailability == UpdateAvailability.developerTriggeredUpdateInProgress;
+        if (!updateDue || !info.immediateUpdateAllowed) return;
+
+        try {
+          final result = await InAppUpdate.performImmediateUpdate();
+          if (result == AppUpdateResult.success) return;
+        } on Exception {
+          return;
+        }
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUpdating = false);
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _shareSubscription?.cancel();
     super.dispose();
   }
@@ -72,10 +123,81 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
     setState(() => _bookmarks = items);
   }
 
+  // --------------------------------------------------------------------- vault
+
+  /// The built-in protected category, if it has been loaded.
+  BookmarkCategory? get _vaultCategory {
+    for (final category in _categories) {
+      if (category.isVault) return category;
+    }
+    return null;
+  }
+
+  bool get _isVaultSelected =>
+      _vaultCategory != null && _selectedCategoryId == _vaultCategory!.id;
+
+  bool _isVaultBookmark(Bookmark bookmark) {
+    final vaultId = _vaultCategory?.id;
+    return vaultId != null && bookmark.categoryId == vaultId;
+  }
+
+  /// Every bookmark the user is allowed to see right now. Vault entries stay
+  /// hidden until the vault has been unlocked.
+  List<Bookmark> get _accessibleBookmarks => _vaultUnlocked
+      ? _bookmarks
+      : _bookmarks.where((bookmark) => !_isVaultBookmark(bookmark)).toList();
+
+  /// Applies a category filter, authenticating first when the Vault is tapped.
+  ///
+  /// Adding a bookmark *to* the Vault never needs authentication; only opening
+  /// (viewing) the Vault's contents does.
+  Future<void> _selectCategory(int? id) async {
+    if (id == null) {
+      setState(() => _selectedCategoryId = null);
+      return;
+    }
+
+    final category = _categoryFor(id);
+    if (category == null) return;
+
+    if (category.isVault && !_vaultUnlocked) {
+      final unlocked = await BiometricAuthService.instance.authenticate();
+      if (!mounted) return;
+      if (!unlocked) {
+        _showSnack('Vault stays locked', isError: true);
+        return;
+      }
+      setState(() {
+        _vaultUnlocked = true;
+        _selectedCategoryId = id;
+      });
+      return;
+    }
+
+    setState(() => _selectedCategoryId = id);
+  }
+
+  /// Locks the vault and drops the filter back to "All" if it was active.
+  void _lockVault() {
+    if (!_vaultUnlocked) return;
+    if (!mounted) {
+      _vaultUnlocked = false;
+      return;
+    }
+    setState(() {
+      _vaultUnlocked = false;
+      if (_isVaultSelected) _selectedCategoryId = null;
+    });
+  }
+
   // ------------------------------------------------------------------- sharing
 
   Future<void> _onShare(IncomingShare share) async {
-    if (_handlingShare) return;
+    while (_isUpdating) {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    if (_handlingShare || !mounted) return;
     _handlingShare = true;
 
     try {
@@ -332,7 +454,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
     final categoryId = _selectedCategoryId;
     final query = _searchQuery.trim().toLowerCase();
 
-    return _bookmarks.where((bookmark) {
+    return _accessibleBookmarks.where((bookmark) {
       if (categoryId != null && bookmark.categoryId != categoryId) {
         return false;
       }
@@ -348,7 +470,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
   @override
   Widget build(BuildContext context) {
     final visible = _visibleBookmarks;
-    final total = _bookmarks.length;
+    final total = _accessibleBookmarks.length;
 
     return Scaffold(
       appBar: AppBar(
@@ -371,6 +493,12 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
           ],
         ),
         actions: [
+          if (_vaultUnlocked)
+            IconButton(
+              icon: const Icon(Icons.lock_outline),
+              tooltip: 'Lock Vault',
+              onPressed: _lockVault,
+            ),
           IconButton(
             icon: const Icon(Icons.category_outlined),
             tooltip: 'Manage categories',
@@ -404,7 +532,8 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
                 counts: _countByCategory(),
                 totalCount: total,
                 filteredCount: visible.length,
-                onSelected: (id) => setState(() => _selectedCategoryId = id),
+                vaultLocked: !_vaultUnlocked,
+                onSelected: _selectCategory,
                 onManage: _manageCategories,
               ),
               const SizedBox(height: 8),
@@ -452,10 +581,11 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
     return null;
   }
 
-  /// Counts per category across *all* bookmarks, not just the filtered view.
+  /// Counts per category across everything the user can currently see. The
+  /// Vault stays hidden (and uncounted) until it has been unlocked.
   Map<int, int> _countByCategory() {
     final counts = <int, int>{};
-    for (final bookmark in _bookmarks) {
+    for (final bookmark in _accessibleBookmarks) {
       final id = bookmark.categoryId;
       if (id != null) counts[id] = (counts[id] ?? 0) + 1;
     }

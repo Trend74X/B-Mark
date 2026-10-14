@@ -14,6 +14,7 @@ class FilterBar extends StatelessWidget {
     required this.filteredCount,
     required this.onSelected,
     required this.onManage,
+    this.vaultLocked = false,
   });
 
   final List<BookmarkCategory> categories;
@@ -25,6 +26,9 @@ class FilterBar extends StatelessWidget {
 
   /// How many bookmarks the active filter currently shows.
   final int filteredCount;
+
+  /// Whether the protected Vault category still needs authentication.
+  final bool vaultLocked;
 
   final ValueChanged<int?> onSelected;
   final VoidCallback onManage;
@@ -47,15 +51,17 @@ class FilterBar extends StatelessWidget {
           ),
           ...categories.map((category) {
             final count = counts[category.id] ?? 0;
+            final locked = category.isVault && vaultLocked;
             return Padding(
               padding: const EdgeInsets.only(left: 8),
               child: _chip(
                 context,
                 label: category.name,
                 count: count,
-                showCount: true,
+                showCount: !locked,
                 selected: selectedCategoryId == category.id,
                 accent: Color(category.colorValue),
+                avatarIcon: locked ? Icons.lock_outline : null,
                 onTap: () => onSelected(category.id),
               ),
             );
@@ -81,6 +87,7 @@ class FilterBar extends StatelessWidget {
     required bool selected,
     required VoidCallback onTap,
     Color? accent,
+    IconData? avatarIcon,
   }) {
     final theme = Theme.of(context);
     final color = accent == null
@@ -90,7 +97,9 @@ class FilterBar extends StatelessWidget {
     return FilterChip(
       selected: selected,
       onSelected: (_) => onTap(),
-      avatar: CircleAvatar(radius: 5, backgroundColor: color),
+      avatar: avatarIcon != null
+          ? Icon(avatarIcon, size: 16, color: color)
+          : CircleAvatar(radius: 5, backgroundColor: color),
       label: Text(showCount ? '$label${count == 0 ? '' : ' ($count)'}' : label),
       showCheckmark: false,
     );

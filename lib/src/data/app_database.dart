@@ -12,7 +12,10 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const _fileName = 'bmark.db';
-  static const _version = 3;
+  static const _version = 4;
+
+  /// Distinct accent for the protected Vault category.
+  static const _vaultColor = 0xFF7B61FF;
 
   static const bookmarks = 'bookmarks';
   static const categories = 'categories';
@@ -44,6 +47,7 @@ class AppDatabase {
             name TEXT NOT NULL UNIQUE COLLATE NOCASE,
             color INTEGER NOT NULL DEFAULT 4286104288,
             is_default INTEGER NOT NULL DEFAULT 0,
+            is_vault INTEGER NOT NULL DEFAULT 0,
             sort_order INTEGER NOT NULL DEFAULT 0
           )
         ''');
@@ -77,6 +81,7 @@ class AppDatabase {
               'name': seed.$1,
               'color': seed.$2,
               'is_default': 1,
+              'is_vault': seed.$3 ? 1 : 0,
               'sort_order': i,
             },
           );
@@ -110,18 +115,70 @@ class AppDatabase {
             'WHERE sort_order = 0',
           );
         }
+        // v4: the protected Vault category. Existing installs get the column
+        // and the category injected automatically, so no migration by hand is
+        // needed and no bookmark is disturbed.
+        if (from < 4) {
+          final info = await db.rawQuery(
+            'PRAGMA table_info($categories)',
+          );
+          final hasVault = info.any(
+            (column) => column['name'] == 'is_vault',
+          );
+          if (!hasVault) {
+            await db.execute(
+              'ALTER TABLE $categories ADD COLUMN is_vault '
+              'INTEGER NOT NULL DEFAULT 0',
+            );
+          }
+          await _ensureVaultCategory(db);
+        }
       },
     );
   }
 
-  static const _seedCategories = <(String, int)>[
-    ('TikTok', 0xFF111111),
-    ('Instagram', 0xFFE1306C),
-    ('YouTube', 0xFFFF0000),
-    ('Facebook', 0xFF1877F2),
-    ('Twitter', 0xFF1DA1F2),
-    ('Reddit', 0xFFFF4500),
-    ('Other', 0xFF6C7AE0),
+  /// Makes sure the built-in Vault category exists, flagging an existing
+  /// same-named category instead of creating a duplicate.
+  static Future<void> _ensureVaultCategory(DatabaseExecutor db) async {
+    final existing = await db.query(
+      categories,
+      columns: ['id'],
+      where: 'name = ?',
+      whereArgs: [BookmarkCategory.vaultName],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      await db.update(
+        categories,
+        {'is_vault': 1, 'is_default': 1},
+        where: 'id = ?',
+        whereArgs: [existing.first['id']],
+      );
+      return;
+    }
+
+    final result = await db.rawQuery(
+      'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM $categories',
+    );
+    final next = (result.first['next'] as num?)?.toInt() ?? 0;
+    await db.insert(categories, {
+      'name': BookmarkCategory.vaultName,
+      'color': _vaultColor,
+      'is_default': 1,
+      'is_vault': 1,
+      'sort_order': next,
+    });
+  }
+
+  static const _seedCategories = <(String, int, bool)>[
+    ('TikTok', 0xFF111111, false),
+    ('Instagram', 0xFFE1306C, false),
+    ('YouTube', 0xFFFF0000, false),
+    ('Facebook', 0xFF1877F2, false),
+    ('Twitter', 0xFF1DA1F2, false),
+    ('Reddit', 0xFFFF4500, false),
+    ('Other', 0xFF6C7AE0, false),
+    (BookmarkCategory.vaultName, _vaultColor, true),
   ];
 
   // ---------------------------------------------------------------- categories
@@ -159,7 +216,12 @@ class AppDatabase {
     }
     final id = await db.insert(
       categories,
-      {'name': trimmed, 'color': _colorFor(trimmed), 'is_default': 0},
+      {
+        'name': trimmed,
+        'color': _colorFor(trimmed),
+        'is_default': 0,
+        'is_vault': 0,
+      },
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
     if (id == 0) {
@@ -193,7 +255,12 @@ class AppDatabase {
 
   Future<void> deleteCategory(int id) async {
     final db = await database;
-    await db.delete(categories, where: 'id = ?', whereArgs: [id]);
+    // Seeded categories (including the protected Vault) cannot be removed.
+    await db.delete(
+      categories,
+      where: 'id = ? AND is_default = 0',
+      whereArgs: [id],
+    );
   }
 
   Future<BookmarkCategory?> categoryByName(String name) async {

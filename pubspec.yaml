@@ -10,6 +10,8 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.6.0
+  in_app_update: ^4.2.5
+  local_auth: ^3.0.2
   path: ^1.9.1
   path_provider: ^2.1.6
   receive_sharing_intent: 1.8.1
