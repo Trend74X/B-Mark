@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:in_app_update/in_app_update.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/app_database.dart';
@@ -340,6 +341,23 @@ class _BookmarkScreenState extends State<BookmarkScreen>
     }
   }
 
+  /// Opens the system share sheet so the link can be sent to any app
+  /// (WhatsApp, Telegram, Messenger, ...).
+  Future<void> _shareBookmark(Bookmark bookmark) async {
+    final title = bookmark.title.trim();
+    final text = title.isEmpty ? bookmark.url : '$title\n${bookmark.url}';
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text: text,
+          subject: title.isEmpty ? 'Bookmark' : title,
+        ),
+      );
+    } on Exception {
+      if (mounted) _showSnack('Could not share link', isError: true);
+    }
+  }
+
   Future<void> _renameBookmark(Bookmark bookmark) async {
     final name = await showDialog<String>(
       context: context,
@@ -564,6 +582,7 @@ class _BookmarkScreenState extends State<BookmarkScreen>
                       bookmark: bookmark,
                       category: _categoryFor(bookmark.categoryId),
                       onTap: () => _openBookmark(bookmark),
+                      onShare: () => _shareBookmark(bookmark),
                       onRename: () => _renameBookmark(bookmark),
                       onChangeCategory: () => _changeCategory(bookmark),
                       onDelete: () => _deleteBookmark(bookmark),

@@ -10,6 +10,7 @@ class BookmarkCard extends StatelessWidget {
     super.key,
     required this.bookmark,
     required this.onTap,
+    required this.onShare,
     required this.onRename,
     required this.onChangeCategory,
     required this.onDelete,
@@ -19,6 +20,7 @@ class BookmarkCard extends StatelessWidget {
   final Bookmark bookmark;
   final BookmarkCategory? category;
   final VoidCallback onTap;
+  final VoidCallback onShare;
   final VoidCallback onRename;
   final VoidCallback onChangeCategory;
   final VoidCallback onDelete;
@@ -79,22 +81,33 @@ class BookmarkCard extends StatelessWidget {
                   ],
                 ),
               ),
-              PopupMenuButton<String>(
-                tooltip: 'Bookmark options',
-                onSelected: (value) {
-                  switch (value) {
-                    case 'rename':
-                      onRename();
-                    case 'category':
-                      onChangeCategory();
-                    case 'delete':
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'rename', child: Text('Edit name')),
-                  PopupMenuItem(value: 'category', child: Text('Change category')),
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PopupMenuButton<String>(
+                    tooltip: 'Bookmark options',
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'rename':
+                          onRename();
+                        case 'category':
+                          onChangeCategory();
+                        case 'delete':
+                          onDelete();
+                        case 'share':
+                          onShare();
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'rename', child: Text('Edit name')),
+                      PopupMenuItem(
+                        value: 'category',
+                        child: Text('Change category'),
+                      ),
+                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                      PopupMenuItem(value: 'share', child: Text('Share')),
+                    ],
+                  ),
                 ],
               ),
             ],
