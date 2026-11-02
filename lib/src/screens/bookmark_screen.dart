@@ -11,6 +11,7 @@ import '../models/bookmark_category.dart';
 import '../services/biometric_auth_service.dart';
 import '../services/share_intent_service.dart';
 import '../services/url_metadata_service.dart';
+import '../utils/category_colors.dart';
 import '../widgets/add_bookmark_dialog.dart';
 import '../widgets/bookmark_card.dart';
 import '../widgets/empty_state.dart';
@@ -34,6 +35,7 @@ class _BookmarkScreenState extends State<BookmarkScreen>
   /// `null` means "All" - the default filter.
   int? _selectedCategoryId;
   String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   /// Whether the user has authenticated to view the Vault this session.
   ///
@@ -100,6 +102,7 @@ class _BookmarkScreenState extends State<BookmarkScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _shareSubscription?.cancel();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -388,13 +391,35 @@ class _BookmarkScreenState extends State<BookmarkScreen>
           SimpleDialogOption(
             onPressed: () =>
                 Navigator.of(context).pop(const _CategoryChoice(null)),
-            child: const Text('Uncategorised'),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.label_off_outlined,
+                  size: 18,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                const Text('Uncategorised'),
+              ],
+            ),
           ),
           ..._categories.map(
             (category) => SimpleDialogOption(
               onPressed: () =>
                   Navigator.of(context).pop(_CategoryChoice(category)),
-              child: Text(category.name),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 5,
+                    backgroundColor: CategoryColors.readable(
+                      Color(category.colorValue),
+                      Theme.of(context).brightness,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(category.name)),
+                ],
+              ),
             ),
           ),
         ],
@@ -423,10 +448,10 @@ class _BookmarkScreenState extends State<BookmarkScreen>
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: Colors.red,
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
+            child: const Text('Delete', style: TextStyle(color: Colors.white),),
           ),
         ],
       ),
@@ -451,44 +476,65 @@ class _BookmarkScreenState extends State<BookmarkScreen>
 
   void _showSnack(String message, {bool isError = false}) {
     if (!mounted) return;
+    final scheme = Theme.of(context).colorScheme;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(message),
-          backgroundColor:
-              isError ? Theme.of(context).colorScheme.errorContainer : null,
+          content: Text(
+            message,
+            style: isError ? TextStyle(color: scheme.onErrorContainer) : null,
+          ),
+          backgroundColor: isError ? scheme.errorContainer : null,
         ),
       );
   }
 
   // ---------------------------------------------------------------------- build
 
-  /// Applies the active category filter and then the search query.
+  /// Bookmarks that match the search query, ignoring the category filter.
   ///
-  /// [_bookmarks] always holds every row, so counts and totals stay correct
-  /// no matter which filter is active.
-  List<Bookmark> get _visibleBookmarks {
-    final categoryId = _selectedCategoryId;
+  /// Also drives the per-chip counts so a chip never claims results the search
+  /// does not actually have.
+  List<Bookmark> get _searchMatches {
     final query = _searchQuery.trim().toLowerCase();
-
+    if (query.isEmpty) return _accessibleBookmarks;
     return _accessibleBookmarks.where((bookmark) {
-      if (categoryId != null && bookmark.categoryId != categoryId) {
-        return false;
-      }
-      if (query.isEmpty) return true;
       return bookmark.displayTitle.toLowerCase().contains(query) ||
           bookmark.url.toLowerCase().contains(query) ||
           bookmark.source.toLowerCase().contains(query);
     }).toList();
   }
 
-  bool get _isFiltered => _selectedCategoryId != null || _searchQuery.isNotEmpty;
+  /// Applies the category filter on top of the search matches.
+  List<Bookmark> get _visibleBookmarks {
+    final categoryId = _selectedCategoryId;
+    final matches = _searchMatches;
+    if (categoryId == null) return matches;
+    return matches
+        .where((bookmark) => bookmark.categoryId == categoryId)
+        .toList();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final hasSearch = _searchQuery.trim().isNotEmpty;
+    final matched = _searchMatches;
     final visible = _visibleBookmarks;
     final total = _accessibleBookmarks.length;
+    final categoryFiltered = _selectedCategoryId != null;
+    final countLabel = hasSearch
+        ? categoryFiltered
+            ? '${visible.length} of ${matched.length} shown'
+            : matched.length == 1
+                ? '1 result'
+                : '${matched.length} results'
+        : categoryFiltered
+            ? '${visible.length} of $total shown'
+            : total == 1
+                ? '1 saved bookmark'
+                : '$total saved bookmarks';
 
     return Scaffold(
       appBar: AppBar(
@@ -497,15 +543,12 @@ class _BookmarkScreenState extends State<BookmarkScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text('Bookmarks'),
-            // Always visible, regardless of the active filter.
+            const SizedBox(height: 1),
             Text(
-              _isFiltered
-                ? '${visible.length} of $total saved'
-                : total == 1
-                  ? '1 bookmark'
-                  : '$total bookmarks',
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              countLabel,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -513,69 +556,58 @@ class _BookmarkScreenState extends State<BookmarkScreen>
         actions: [
           if (_vaultUnlocked)
             IconButton(
-              icon: const Icon(Icons.lock_outline),
+              icon: const Icon(Icons.lock_outline, size: 22),
               tooltip: 'Lock Vault',
               onPressed: _lockVault,
             ),
           IconButton(
-            icon: const Icon(Icons.category_outlined),
+            icon: const Icon(Icons.category_outlined, size: 22),
             tooltip: 'Manage categories',
             onPressed: _manageCategories,
           ),
+          const SizedBox(width: 4),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(108),
+          preferredSize: const Size.fromHeight(120),
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                child: SizedBox(
-                  height: 44,
-                  child: TextField(
-                    onChanged: (value) => setState(() => _searchQuery = value),
-                    decoration: InputDecoration(
-                      hintText: 'Search bookmarks',
-                      prefixIcon: const Icon(Icons.search),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                    ),
-                  ),
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: _buildSearchField(),
               ),
               FilterBar(
                 categories: _categories,
                 selectedCategoryId: _selectedCategoryId,
-                counts: _countByCategory(),
+                counts: _countByCategory(matched),
                 totalCount: total,
-                filteredCount: visible.length,
+                resultCount: matched.length,
+                hasSearch: _searchQuery.trim().isNotEmpty,
                 vaultLocked: !_vaultUnlocked,
                 onSelected: _selectCategory,
                 onManage: _manageCategories,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 14),
             ],
           ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _addManually,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded, size: 22),
         label: const Text('Add'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-              : visible.isEmpty
-                  ? EmptyState(
-                      filtered: _searchQuery.isNotEmpty ||
-                          _selectedCategoryId != null,
-                    )
-
+          : visible.isEmpty
+              ? EmptyState(
+                  filtered:
+                      _searchQuery.trim().isNotEmpty ||
+                      _selectedCategoryId != null,
+                )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 96),
                   itemCount: visible.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemBuilder: (context, index) {
                     final bookmark = visible[index];
                     return BookmarkCard(
@@ -592,6 +624,33 @@ class _BookmarkScreenState extends State<BookmarkScreen>
     );
   }
 
+  Widget _buildSearchField() {
+    final theme = Theme.of(context);
+    return TextField(
+      controller: _searchController,
+      textInputAction: TextInputAction.search,
+      onChanged: (value) => setState(() => _searchQuery = value),
+      style: theme.textTheme.bodyLarge,
+      decoration: InputDecoration(
+        hintText: 'Search bookmarks',
+        prefixIcon: const Icon(Icons.search_rounded, size: 21),
+        prefixIconConstraints: const BoxConstraints(minWidth: 44),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded, size: 18),
+                tooltip: 'Clear search',
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+              ),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 13),
+      ),
+    );
+  }
+
   BookmarkCategory? _categoryFor(int? id) {
     if (id == null) return null;
     for (final category in _categories) {
@@ -600,11 +659,12 @@ class _BookmarkScreenState extends State<BookmarkScreen>
     return null;
   }
 
-  /// Counts per category across everything the user can currently see. The
-  /// Vault stays hidden (and uncounted) until it has been unlocked.
-  Map<int, int> _countByCategory() {
+  /// Counts per category among the bookmarks that match the current search.
+  ///
+  /// The Vault stays hidden (and uncounted) until it has been unlocked.
+  Map<int, int> _countByCategory(List<Bookmark> bookmarks) {
     final counts = <int, int>{};
-    for (final bookmark in _accessibleBookmarks) {
+    for (final bookmark in bookmarks) {
       final id = bookmark.categoryId;
       if (id != null) counts[id] = (counts[id] ?? 0) + 1;
     }

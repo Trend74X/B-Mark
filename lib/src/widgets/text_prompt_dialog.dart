@@ -70,8 +70,10 @@ class _TextPromptDialogState extends State<TextPromptDialog> {
         textCapitalization: widget.textCapitalization,
         textInputAction: TextInputAction.done,
         decoration: InputDecoration(
-          labelText: widget.label,
           hintText: widget.hintText,
+          prefixIconConstraints: const BoxConstraints(minWidth: 44),
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 13, horizontal: 12),
         ),
         onSubmitted: (_) => _submit(),
       ),

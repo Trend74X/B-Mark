@@ -11,7 +11,8 @@ class FilterBar extends StatelessWidget {
     required this.selectedCategoryId,
     required this.counts,
     required this.totalCount,
-    required this.filteredCount,
+    required this.resultCount,
+    required this.hasSearch,
     required this.onSelected,
     required this.onManage,
     this.vaultLocked = false,
@@ -19,13 +20,18 @@ class FilterBar extends StatelessWidget {
 
   final List<BookmarkCategory> categories;
   final int? selectedCategoryId;
+
+  /// Per-category counts, already narrowed down to the current search results.
   final Map<int, int> counts;
 
   /// Total bookmarks across every category.
   final int totalCount;
 
-  /// How many bookmarks the active filter currently shows.
-  final int filteredCount;
+  /// How many bookmarks match the current search, before the category filter.
+  final int resultCount;
+
+  /// Whether a search query is active.
+  final bool hasSearch;
 
   /// Whether the protected Vault category still needs authentication.
   final bool vaultLocked;
@@ -39,13 +45,15 @@ class FilterBar extends StatelessWidget {
       height: 40,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        physics: const BouncingScrollPhysics(),
         children: [
           _chip(
             context,
             label: 'All',
-            count: totalCount,
-            showCount: selectedCategoryId == null && filteredCount != totalCount,
+            count: hasSearch ? resultCount : totalCount,
+            showCount:
+                hasSearch && selectedCategoryId == null && resultCount != totalCount,
             selected: selectedCategoryId == null,
             onTap: () => onSelected(null),
           ),
@@ -58,20 +66,29 @@ class FilterBar extends StatelessWidget {
                 context,
                 label: category.name,
                 count: count,
-                showCount: !locked,
+                // No count when the search has nothing for this category.
+                showCount: !locked && count > 0,
                 selected: selectedCategoryId == category.id,
                 accent: Color(category.colorValue),
-                avatarIcon: locked ? Icons.lock_outline : null,
+                avatarIcon: locked ? Icons.lock_outline_rounded : null,
                 onTap: () => onSelected(category.id),
               ),
             );
           }),
           Padding(
             padding: const EdgeInsets.only(left: 8),
-            child: ActionChip(
-              avatar: const Icon(Icons.tune, size: 16),
-              label: const Text('Manage'),
+            child: OutlinedButton.icon(
               onPressed: onManage,
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('Manage'),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: const StadiumBorder(),
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
             ),
           ),
         ],
@@ -97,11 +114,34 @@ class FilterBar extends StatelessWidget {
     return FilterChip(
       selected: selected,
       onSelected: (_) => onTap(),
-      avatar: avatarIcon != null
-          ? Icon(avatarIcon, size: 16, color: color)
-          : CircleAvatar(radius: 5, backgroundColor: color),
-      label: Text(showCount ? '$label${count == 0 ? '' : ' ($count)'}' : label),
       showCheckmark: false,
+      avatar: avatarIcon != null
+        ? Icon(
+          avatarIcon,
+          size: 15,
+          color: selected ? theme.colorScheme.onPrimary : color,
+        )
+        : CircleAvatar(
+          radius: 4,
+          backgroundColor: selected ? theme.colorScheme.onPrimary : color,
+        ),
+      label: Text(showCount ? '$label · $count' : label),
+      labelStyle: theme.textTheme.labelLarge?.copyWith(
+        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+        color: selected
+          ? theme.colorScheme.onPrimary
+          : theme.colorScheme.onSurfaceVariant,
+      ),
+      backgroundColor: theme.colorScheme.surfaceContainerLow,
+      selectedColor: theme.colorScheme.primary,
+      side: BorderSide(
+        color: selected
+          ? theme.colorScheme.primary
+          : theme.colorScheme.outlineVariant.withValues(alpha: 0.8),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 }

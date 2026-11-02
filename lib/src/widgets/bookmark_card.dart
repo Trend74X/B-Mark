@@ -28,47 +28,52 @@ class BookmarkCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final host = Uri.tryParse(bookmark.url)?.host.replaceFirst(
+          RegExp(r'^www\.'),
+          '',
+        ) ??
+        bookmark.url;
 
     return Card(
-      margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ThumbnailPreview(
                 url: bookmark.url,
                 thumbnailUrl: bookmark.thumbnailUrl,
-                size: 68,
+                size: 64,
+                borderRadius: 12,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       bookmark.displayTitle,
-                      style: theme.textTheme.titleSmall,
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        height: 1.3,
+                        letterSpacing: -0.1,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
-                      Uri.tryParse(bookmark.url)?.host.replaceFirst(
-                            RegExp(r'^www\.'),
-                            '',
-                          ) ??
-                          bookmark.url,
+                      host,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -81,11 +86,34 @@ class BookmarkCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Row(
+              const SizedBox(width: 4),
+              Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.share_outlined, size: 19),
+                    tooltip: 'Share link',
+                    onPressed: onShare,
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 32,
+                    ),
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   PopupMenuButton<String>(
                     tooltip: 'Bookmark options',
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 32,
+                    ),
+                    icon: Icon(
+                      Icons.more_horiz_rounded,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     onSelected: (value) {
                       switch (value) {
                         case 'rename':
@@ -94,8 +122,6 @@ class BookmarkCard extends StatelessWidget {
                           onChangeCategory();
                         case 'delete':
                           onDelete();
-                        case 'share':
-                          onShare();
                       }
                     },
                     itemBuilder: (context) => const [
@@ -105,7 +131,6 @@ class BookmarkCard extends StatelessWidget {
                         child: Text('Change category'),
                       ),
                       PopupMenuItem(value: 'delete', child: Text('Delete')),
-                      PopupMenuItem(value: 'share', child: Text('Share')),
                     ],
                   ),
                 ],
@@ -129,19 +154,25 @@ class _SourceChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.travel_explore, size: 13, color: theme.colorScheme.primary),
+          Icon(
+            Icons.public_rounded,
+            size: 12,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 4),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 110),
             child: Text(
               source,
-              style: theme.textTheme.labelSmall,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -166,9 +197,12 @@ class _CategoryChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: CategoryColors.surface(Color(category.colorValue), theme.brightness),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.6)),
+        color: CategoryColors.surface(
+          Color(category.colorValue),
+          theme.brightness,
+        ),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
       ),
       child: Text(
         category.name,

@@ -132,49 +132,66 @@ class _AddBookmarkDialogState extends State<AddBookmarkDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ThumbnailPreview(
-                    thumbnailUrl: widget.thumbnailUrl,
-                    url: widget.share.url,
-                    size: 64,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (widget.share.sourceApp != null)
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.travel_explore,
-                                size: 14,
-                                color: theme.colorScheme.primary,
-                              ),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(
-                                  'Shared from ${widget.share.sourceApp}',
-                                  style: theme.textTheme.labelSmall,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        Text(
-                          widget.share.url,
-                          style: theme.textTheme.bodySmall,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest
+                      .withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ThumbnailPreview(
+                      thumbnailUrl: widget.thumbnailUrl,
+                      url: widget.share.url,
+                      size: 56,
+                      borderRadius: 12,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.share.sourceApp != null)
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.travel_explore_rounded,
+                                  size: 13,
+                                  color: theme.colorScheme.primary,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    'Shared from ${widget.share.sourceApp}',
+                                    style:
+                                        theme.textTheme.labelSmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.share.url,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               TextField(
                 controller: _titleController,
                 textCapitalization: TextCapitalization.sentences,
@@ -194,14 +211,25 @@ class _AddBookmarkDialogState extends State<AddBookmarkDialog> {
                 ),
                 onSubmitted: (_) => _save(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               Row(
                 children: [
-                  Expanded(child: Text('Category', style: theme.textTheme.titleSmall)),
+                  Expanded(
+                    child: Text(
+                      'Category',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                   TextButton.icon(
                     onPressed: _createCategory,
-                    icon: const Icon(Icons.add, size: 18),
+                    icon: const Icon(Icons.add_rounded, size: 18),
                     label: const Text('New'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
                   ),
                 ],
               ),
@@ -235,16 +263,19 @@ class _AddBookmarkDialogState extends State<AddBookmarkDialog> {
           child: const Text('Cancel'),
         ),
 
-        FilledButton.icon(
-          onPressed: _save,
-          icon: const Icon(Icons.bookmark_add),
-          label: const Text('Save'),
+        FilledButton(
+          // Saving early would persist the placeholder title/thumbnail.
+          onPressed: widget.metadataLoading ? null : _save,
+          child: const Text('Save'),
         ),
       ],
     );
   }
 
   void _save() {
+    // Keyboard "done" can fire while the fetch is still running; the button is
+    // disabled for the same reason.
+    if (widget.metadataLoading) return;
     final title = _titleController.text.trim();
     Navigator.of(context).pop(
       AddBookmarkResult(
